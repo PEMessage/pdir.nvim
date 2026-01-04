@@ -11,8 +11,7 @@ function actions.right(state)
 end
 
 function actions.confirm(state)
-    local target_path = "/" .. table.concat(state.segments, "/", 1, state.current_idx)
-    target_path = target_path:gsub("//+", "/") -- Clean root slashes
+    local target_path = table.concat(state.segments, state.sep, 1, state.current_idx)
     vim.api.nvim_win_close(state.win, true)
     vim.cmd("cd " .. target_path)
     print("Changed directory to: " .. target_path)
