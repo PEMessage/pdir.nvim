@@ -1,6 +1,9 @@
 local M = {}
 local actions = require("pdir.actions")
 
+-- Detect path separator (usually '\' on Windows, '/' on Unix)
+local sep = package.config:sub(1, 1)
+
 -- Default Configuration
 M.config = {
     keys = {
@@ -20,12 +23,12 @@ function M.setup(user_config)
 end
 
 function M.open_breadcrumb(path, initial_idx)
-    -- Using trimempty = false to preserve structure
-    local segments = vim.split(path, "/", { trimempty = false })
+    -- Use the OS-specific separator for splitting
+    -- We escape the separator for the pattern match in case it's a backslash
+    local segments = vim.split(path, sep, { trimempty = false })
 
     if #segments == 0 then return end
 
-    -- Normalize initial_idx using modulo math
     local current_idx = ((initial_idx - 1) % #segments) + 1
 
     local bufnr = vim.api.nvim_create_buf(false, true)
@@ -49,44 +52,40 @@ function M.open_breadcrumb(path, initial_idx)
         current_idx = current_idx,
         bufnr = bufnr,
         win = win,
-        ns_id = ns_id
+        ns_id = ns_id,
+        sep = sep -- Store separator in state for actions.confirm if needed
     }
 
     state.render = function()
         local display_segments = {}
         local highlight_start = 0
-        local highlight_end = 0
         local current_pos = 0
 
         for i, segment in ipairs(state.segments) do
             local text = segment
 
-            -- Only use placeholder if the segment is empty AND currently selected
             if i == state.current_idx and segment == "" then
                 text = "<--"
             end
 
-            -- Track highlight bounds for the current index
             if i == state.current_idx then
                 highlight_start = current_pos
-                highlight_end = current_pos + #text
+                state.highlight_end = current_pos + #text -- Update state for highlight tracking
             end
 
             table.insert(display_segments, text)
-
-            -- Advance current_pos: length of text + 1 for the "/" separator
-            current_pos = current_pos + #text + 1
+            -- Use the actual separator length for position tracking
+            current_pos = current_pos + #text + #sep
         end
 
-        local line_text = table.concat(display_segments, "/")
+        local line_text = table.concat(display_segments, sep)
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { line_text })
         vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 
-        vim.api.nvim_buf_add_highlight(bufnr, ns_id, M.config.highlight, 0, highlight_start, highlight_end)
+        vim.api.nvim_buf_add_highlight(bufnr, ns_id, M.config.highlight, 0, highlight_start, state.highlight_end)
         vim.api.nvim_win_set_cursor(win, { 1, highlight_start })
     end
 
-    -- Bind keys
     for key, action_fn in pairs(M.config.keys) do
         vim.keymap.set("n", key, function()
             action_fn(state)
@@ -100,18 +99,18 @@ local cache = {
     prev_dir = "",
 }
 
---- Opens parent breadcrumb with a relative offset
---- @param offset number | nil (e.g., -1 to move left, +1 to move right)
 function M.open_parent(offset)
     offset = offset or 0
     local current_dir = vim.fn.getcwd()
     local cached_dir = cache.prev_dir
 
-    local curr_segments = vim.split(current_dir, "/", { trimempty = false })
-    local cache_segments = vim.split(cached_dir, "/", { trimempty = false })
+    -- Split using the detected separator
+    local curr_segments = vim.split(current_dir, sep, { trimempty = false })
+    local cache_segments = vim.split(cached_dir, sep, { trimempty = false })
 
     local update_cache = false
 
+    -- Check if paths match (Windows paths are case-insensitive, handled by :find)
     if cached_dir == "" then
         update_cache = true
     elseif not (current_dir:find(cached_dir, 1, true) == 1 or cached_dir:find(current_dir, 1, true) == 1) then
@@ -123,11 +122,12 @@ function M.open_parent(offset)
     local initial_idx = -1
     if update_cache then
         cache.prev_dir = current_dir
-        initial_idx = -1
+        initial_idx = #curr_segments -- Default to end of path
     else
         initial_idx = math.min(#curr_segments + offset, #cache_segments)
     end
 
     M.open_breadcrumb(cache.prev_dir, initial_idx)
 end
+
 return M
