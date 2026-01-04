@@ -20,19 +20,16 @@ end
 
 function M.open_parent()
     local pwd = vim.fn.getcwd()
-    M.open_breadcrumb(pwd, -1)
+    M.open_breadcrumb(pwd, -2)
 end
 
 function M.open_breadcrumb(path, initial_idx)
-    local segments = {}
-    for segment in path:gmatch("[^/]+") do
-        table.insert(segments, segment)
-    end
+    -- Using trimempty = false to preserve structure
+    local segments = vim.split(path, "/", { trimempty = false })
 
     if #segments == 0 then return end
 
     -- Normalize initial_idx using modulo math
-    -- Lua is 1-indexed, so we use (idx - 1) % len + 1
     local current_idx = ((initial_idx - 1) % #segments) + 1
 
     local bufnr = vim.api.nvim_create_buf(false, true)
@@ -60,18 +57,37 @@ function M.open_breadcrumb(path, initial_idx)
     }
 
     state.render = function()
-        local line_text = "/" .. table.concat(state.segments, "/")
+        local display_segments = {}
+        local highlight_start = 0
+        local highlight_end = 0
+        local current_pos = 0
+
+        for i, segment in ipairs(state.segments) do
+            local text = segment
+
+            -- Only use placeholder if the segment is empty AND currently selected
+            if i == state.current_idx and segment == "" then
+                text = "<--"
+            end
+
+            -- Track highlight bounds for the current index
+            if i == state.current_idx then
+                highlight_start = current_pos
+                highlight_end = current_pos + #text
+            end
+
+            table.insert(display_segments, text)
+
+            -- Advance current_pos: length of text + 1 for the "/" separator
+            current_pos = current_pos + #text + 1
+        end
+
+        local line_text = table.concat(display_segments, "/")
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { line_text })
         vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 
-        -- Calculate highlight bounds
-        local start_col = 0
-        for i = 1, state.current_idx - 1 do
-            start_col = start_col + #state.segments[i] + 1
-        end
-        local end_col = start_col + #state.segments[state.current_idx] + 1
-
-        vim.api.nvim_buf_add_highlight(bufnr, ns_id, "IncSearch", 0, start_col, end_col)
+        -- Apply the highlight to the calculated byte range
+        vim.api.nvim_buf_add_highlight(bufnr, ns_id, "IncSearch", 0, highlight_start, highlight_end)
     end
 
     -- Bind keys
