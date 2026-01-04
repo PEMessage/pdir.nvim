@@ -18,16 +18,25 @@ function M.setup(user_config)
     end
 end
 
-function M.open_breadcrumb()
-    local cwd = vim.fn.getcwd()
+function M.open_parent()
+    local pwd = vim.fn.getcwd()
+    M.open_breadcrumb(pwd, -1)
+end
+
+function M.open_breadcrumb(path, initial_idx)
     local segments = {}
-    for segment in cwd:gmatch("[^/]+") do
+    for segment in path:gmatch("[^/]+") do
         table.insert(segments, segment)
     end
 
-    -- Create floating window buffer
+    if #segments == 0 then return end
+
+    -- Normalize initial_idx using modulo math
+    -- Lua is 1-indexed, so we use (idx - 1) % len + 1
+    local current_idx = ((initial_idx - 1) % #segments) + 1
+
     local bufnr = vim.api.nvim_create_buf(false, true)
-    local win_width = math.min(#cwd + 10, vim.o.columns - 4)
+    local win_width = math.min(#path + 10, vim.o.columns - 4)
     local win = vim.api.nvim_open_win(bufnr, true, {
         relative = "editor",
         width = win_width,
@@ -36,7 +45,7 @@ function M.open_breadcrumb()
         col = math.floor((vim.o.columns - win_width) / 2),
         style = "minimal",
         border = "rounded",
-        title = " Select Parent Directory ",
+        title = " Select Directory ",
         title_pos = "center"
     })
 
@@ -44,33 +53,28 @@ function M.open_breadcrumb()
 
     local state = {
         segments = segments,
-        current_idx = #segments,
+        current_idx = current_idx,
         bufnr = bufnr,
         win = win,
         ns_id = ns_id
     }
 
     state.render = function()
-        -- 1. Assemble the full path string
         local line_text = "/" .. table.concat(state.segments, "/")
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { line_text })
         vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 
-        -- 2. Calculate the start column of the current segment
+        -- Calculate highlight bounds
         local start_col = 0
         for i = 1, state.current_idx - 1 do
-            -- Length of segment + 1 for the "/"
             start_col = start_col + #state.segments[i] + 1
         end
-
-        -- 3. Calculate end column (start + separator + segment length)
         local end_col = start_col + #state.segments[state.current_idx] + 1
 
-        -- 4. Apply highlight only to the calculated range
         vim.api.nvim_buf_add_highlight(bufnr, ns_id, "IncSearch", 0, start_col, end_col)
     end
 
-    -- Apply keybindings from config
+    -- Bind keys
     for key, action_fn in pairs(M.config.keys) do
         vim.keymap.set("n", key, function()
             action_fn(state)
