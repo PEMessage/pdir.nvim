@@ -86,8 +86,8 @@ function M.open_breadcrumb(path, initial_idx)
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { line_text })
         vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 
-        -- Apply the highlight to the calculated byte range
         vim.api.nvim_buf_add_highlight(bufnr, ns_id, "IncSearch", 0, highlight_start, highlight_end)
+        vim.api.nvim_win_set_cursor(win, { 1, highlight_start })
     end
 
     -- Bind keys
