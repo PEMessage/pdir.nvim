@@ -4,23 +4,19 @@ local actions = require("pdir.actions")
 -- Default Configuration
 M.config = {
     keys = {
-        ["<Left>"]  = actions.left,
-        ["<Right>"] = actions.right,
+        ["<left>"]  = actions.left,
+        ["<m-left>"]   = actions.left,
+        ["<right>"] = actions.right,
+        ["<m-right>"] = actions.right,
         ["<CR>"]    = actions.confirm,
         ["<Esc>"]   = actions.close,
         ["<C-c>"]   = actions.close,
-    }
+    },
+    highlight = "IncSearch",
 }
 
 function M.setup(user_config)
-    if user_config and user_config.keys then
-        M.config.keys = vim.tbl_extend("force", M.config.keys, user_config.keys)
-    end
-end
-
-function M.open_parent()
-    local pwd = vim.fn.getcwd()
-    M.open_breadcrumb(pwd, -2)
+    M.config = vim.tbl_deep_extend("force", M.config, user_config or {})
 end
 
 function M.open_breadcrumb(path, initial_idx)
@@ -86,7 +82,7 @@ function M.open_breadcrumb(path, initial_idx)
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { line_text })
         vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 
-        vim.api.nvim_buf_add_highlight(bufnr, ns_id, "IncSearch", 0, highlight_start, highlight_end)
+        vim.api.nvim_buf_add_highlight(bufnr, ns_id, M.config.highlight, 0, highlight_start, highlight_end)
         vim.api.nvim_win_set_cursor(win, { 1, highlight_start })
     end
 
@@ -100,4 +96,38 @@ function M.open_breadcrumb(path, initial_idx)
     state.render()
 end
 
+local cache = {
+    prev_dir = "",
+}
+
+--- Opens parent breadcrumb with a relative offset
+--- @param offset number | nil (e.g., -1 to move left, +1 to move right)
+function M.open_parent(offset)
+    offset = offset or 0
+    local current_dir = vim.fn.getcwd()
+    local cached_dir = cache.prev_dir
+
+    local curr_segments = vim.split(current_dir, "/", { trimempty = false })
+    local cache_segments = vim.split(cached_dir, "/", { trimempty = false })
+
+    local update_cache = false
+
+    if cached_dir == "" then
+        update_cache = true
+    elseif not (current_dir:find(cached_dir, 1, true) == 1 or cached_dir:find(current_dir, 1, true) == 1) then
+        update_cache = true
+    elseif current_dir:find(cached_dir, 1, true) == 1 and #current_dir > #cached_dir then
+        update_cache = true
+    end
+
+    local initial_idx = -1
+    if update_cache then
+        cache.prev_dir = current_dir
+        initial_idx = -1
+    else
+        initial_idx = math.min(#curr_segments + offset, #cache_segments)
+    end
+
+    M.open_breadcrumb(cache.prev_dir, initial_idx)
+end
 return M
