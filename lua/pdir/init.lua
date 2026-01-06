@@ -119,14 +119,13 @@ function M.open_parent(offset)
         update_cache = true
     end
 
-    local initial_idx = -1
+    local cache_segments_len = #cache_segments
     if update_cache then
         cache.prev_dir = current_dir
-        initial_idx = #curr_segments -- Default to end of path
-    else
-        initial_idx = math.max(math.min(#curr_segments + offset, #cache_segments), 1)
+        cache_segments_len = #curr_segments
     end
 
+    local initial_idx = math.max(math.min(#curr_segments + offset, cache_segments_len), 1)
     M.open_breadcrumb(cache.prev_dir, initial_idx)
 end
 
